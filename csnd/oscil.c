@@ -6,7 +6,14 @@
 #include <dsp/utils.h>
 #include <stdint.h>
 
+// TODO: add to dsp lib
+static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+    wt[wt_len] = wt[0];
+    wt[wt_len + 1] = wt[1];
+}
+
 int ftoscil3_init(CSOUND* csound, ftoscil3* obj) {
+
     (void) csound;
     (void) obj;
 
@@ -38,21 +45,15 @@ int ftoscil3_init(CSOUND* csound, ftoscil3* obj) {
     }
 
     // set guard points
-    buf[pow2_len] = buf[0];
-    buf[pow2_len + 1] = buf[1];
+    //
+    wavetable_cubic_guardpoint(buf, pow2_len);
 
     // handle phase
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
 
     MYFLT sr = GetLocalSr(&obj->h);
 
-    ftable_init(&obj->wt, buf, buf_sz);
-
-    dsp_err err;
-
-    if ((err = oscil_init(&obj->state, &obj->wt, 440.0, phase, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init: err\n");
-    }
+    oscil_init(&obj->state, obj->wt, buf_sz, 440.0, phase, sr);
     return OK;
 }
 
@@ -97,17 +98,11 @@ int ftoscil3_pm_init(CSOUND* csound, ftoscil3_pm* obj) {
     }
 
     // set guard points
-    buf[pow2_len] = buf[0];
-    buf[pow2_len + 1] = buf[1];
+    wavetable_cubic_guardpoint(buf, pow2_len);
 
     MYFLT sr = GetLocalSr(&obj->h);
 
-    ftable_init(&obj->wt, buf, buf_sz);
-
-    dsp_err err;
-    if ((err = oscil_init(&obj->state, &obj->wt, 440.0, 0.0, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init: err\n");
-    }
+    oscil_init(&obj->state, obj->wt, buf_sz, 440.0, 0.0, sr);
     return OK;
 }
 
@@ -149,12 +144,8 @@ int oftoscil3_init(CSOUND* csound, oftoscil3* obj) {
         buf[i] = ftp->ftable[i];
     }
 
-    // // set guard points
-    buf[pow2_len] = buf[0];
-    buf[pow2_len + 1] = buf[1];
-
-    // init ftable.
-    ftable_init(&obj->wt, buf, buf_sz);
+    // set guard points
+    wavetable_cubic_guardpoint(buf, pow2_len);
 
     // // handle phase
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
@@ -210,10 +201,7 @@ int oftoscil3_init(CSOUND* csound, oftoscil3* obj) {
     csound->Message(csound, "Oversampling factor %d. Sr=%f\n", osfactor, osrate);
     // oscil finally at the oversampling rate
 
-    dsp_err err;
-    if ((err = oscil_init(&obj->state, &obj->wt, 440.0, phase, osrate)) != DSP_OK) {
-        csound->InitError(csound, "oscil_init: err\n");
-    }
+    oscil_init(&obj->state, obj->wt, buf_sz, 440.0, phase, osrate);
     return OK;
 }
 

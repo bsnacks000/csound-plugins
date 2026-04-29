@@ -1,0 +1,52 @@
+# .clang-format for C projects using Google style
+BasedOnStyle: Google
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Line breaking
+ColumnLimit: 88
+
+# Braces
+BreakBeforeBraces: Attach           # Google prefers attaching for functions, etc.
+
+# Pointers and references
+PointerAlignment: Left              # int* ptr instead of int *ptr
+DerivePointerAlignment: false
+
+# Control structures
+SpaceBeforeParens: ControlStatements
+
+# Spacing
+SpaceAfterCStyleCast: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpacesInContainerLiterals: false
+
+# Comments
+AlignTrailingComments: true
+
+# Includes
+IncludeBlocks: Preserve
+SortIncludes: true
+
+# Preprocessor
+IndentPPDirectives: AfterHash
+KeepEmptyLinesAtTheStartOfBlocks: true
+
+# Other C-specific behaviors
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Macros (you can customize these if you use BEGIN/END blocks)
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+
+
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AlignAfterOpenBracket: Align

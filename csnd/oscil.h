@@ -8,7 +8,7 @@ extern "C" {
 #include <csdl.h>
 
 #include <dsp/bq.h>
-#include <dsp/ftable/ftable.h>
+// #include <dsp/ftable/ftable.h>
 #include <dsp/oscil.h>
 
 typedef struct {
@@ -16,7 +16,7 @@ typedef struct {
     MYFLT *a_out, *a_freq, *i_phase, *i_fn;  // a-aii
     FUNC* ftp;                               // the ftable pointer
     AUXCH aux;                               // hold our own copy of ftable
-    ftable wt;
+    float* wt;
     oscil state;
 } ftoscil3;
 
@@ -28,7 +28,7 @@ typedef struct {
     MYFLT *a_out, *a_freq, *a_phase, *i_fn;  // a-aai
     FUNC* ftp;                               // the ftable pointer
     AUXCH aux;                               // hold our own copy of ftable
-    ftable wt;
+    float* wt;
     oscil state;
 } ftoscil3_pm;
 
@@ -41,15 +41,16 @@ int ftoscil3_pm_vector(CSOUND* csound, ftoscil3_pm* obj);
 // provided with i_osrate;
 typedef struct {
     OPDS h;
-    MYFLT *a_out, *a_freq, *i_phase, *i_fn, *i_osfactor;  // a-aiio (optional irate)
-    FUNC* ftp;                                            // the ftable pointer
-    AUXCH ft;                                             // hold our own copy of ftable
-    AUXCH os_out_buf;                                     // oversamp output buffer
-    AUXCH os_freq_buf;                                    // oversamp freq buffer
+    MYFLT *a_out, *a_freq, *i_phase, *i_fn,
+        *i_osfactor;    // a-aiio (optional irate)
+    FUNC* ftp;          // the ftable pointer
+    AUXCH ft;           // hold our own copy of ftable
+    AUXCH os_out_buf;   // oversamp output buffer
+    AUXCH os_freq_buf;  // oversamp freq buffer
     size_t os_buf_sz;
     bq_non_resonant bank[OFTOSCIL_FILTER_N];  // anti-aliasing bank
     float os_fc;                              // calculated decimate cutoff
-    ftable wt;
+    float* wt;
     oscil state;
     // bq_non_resonant smooth;  // smooth freq signal
     float prev;

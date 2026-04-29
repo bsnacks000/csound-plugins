@@ -1,35 +1,43 @@
 #include "distort.h"
 #include <dsp/maths.h>
 
-#include <dsp/ftable/chebpoly.h>
-#include <dsp/ftable/ramp.h>
+#include <dsp/chebpoly.h>
 #include <dsp/tabread.h>
 #include <dsp/utils.h>
 #include <stdint.h>
 #include "dsp/shape.h"
 
-#define ft_BUF_SZ 1026
+#define WT_BUF_SZ 1026
 
-static float chebsaw_buf[ft_BUF_SZ] = {0};
+// TODO: add to dsp lib
+static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+    wt[wt_len] = wt[0];
+    wt[wt_len + 1] = wt[1];
+}
 
-static ftable chebsaw_wt;
+/**
+ * @brief - draw a line between start and stop inclusive (like numpy.linspace)
+    TODO: add to dsp lib
+ */
+static inline void linspace(float* buf, uint32_t buf_sz, float start, float stop) {
+    dsp_assert(buf_sz >= 2, "buf size must be at least 2.");
+
+    float step = (stop - start) / (float) (buf_sz - 1);
+    for (uint32_t i = 0; i < buf_sz; i++) {
+        buf[i] = start + i * step;
+    }
+}
+
+static float chebsaw_buf[WT_BUF_SZ] = {0};
 
 int chebsaw_tab_init(CSOUND* csound) {
     (void) csound;
-    ftable_init(&chebsaw_wt, chebsaw_buf, ft_BUF_SZ);
 
-    int err;
+    const uint32_t wt_len = WT_BUF_SZ - 2;
 
-    // first create bipolar linear ramp
-    ft_ramp_args ramp_args = {
-        .start = -1.0,
-        .stop = 1.0,
-        .endpoint = true,
-    };
-
-    if ((err = ft_linspace(&chebsaw_wt, &ramp_args)) != DSP_OK) {
-        return NOTOK;
-    }
+    // create bipolar linear bipolar ramp for the shaper
+    // fill pow2_sz - 2 with the line
+    linspace(chebsaw_buf, wt_len, -1.0, 1.0);
 
     // ~saw wave coeffs from csound gen13 example
     float h[16] = {
@@ -37,12 +45,9 @@ int chebsaw_tab_init(CSOUND* csound) {
         12.5, 11.1,  -10.0, -9.09, 8.333, 7.69, -7.14, -6.67,
     };
 
-    ft_chebpoly_args cheby_args;
-    ft_chebpoly_args_init(&cheby_args, h, 16);
-
-    if ((err = ft_chebpoly(&chebsaw_wt, &cheby_args)) != DSP_OK) {
-        return NOTOK;
-    }
+    // calculate the chebyshev waveshape and set guard point for tabread
+    chebyshev_fill(chebsaw_buf, wt_len, h, 16);
+    wavetable_cubic_guardpoint(chebsaw_buf, wt_len);
 
     return OK;
 }
@@ -51,7 +56,7 @@ int chebsaw_init(CSOUND* csound, chebsaw* obj) {
     (void) csound;
     (void) obj;
 
-    tabread_init(&obj->tr, &chebsaw_wt);
+    tabread_init(&obj->tr, chebsaw_buf, WT_BUF_SZ);
 
     return OK;
 }
@@ -68,7 +73,7 @@ int chebsaw_vector(CSOUND* csound, chebsaw* obj) {
     // (-1,1) -> (0, N)
     scale_block(a_out, a_in, 0.5, 0, nsmps);
     dc_block(a_out, a_out, 0.5, 0, nsmps);
-    scale_block(a_out, a_out, (float) (chebsaw_wt.len - 1), 0, nsmps);
+    scale_block(a_out, a_out, (float) (obj->tr.wt_len_ - 1), 0, nsmps);
 
     // read off the waveshaped value
     tabread3_tick_block(&obj->tr, a_out, a_out, 0, nsmps);

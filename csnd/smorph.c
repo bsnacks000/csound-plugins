@@ -1,160 +1,155 @@
+#include <errno.h>
 
 #include <csound.h>
-#include <dsp/ftable/deck.h>
-#include <dsp/ftable/sinesum.h>
+
 #include <dsp/interpolate.h>
 #include <dsp/oscil.h>
+#include <dsp/sinesum.h>
 #include <dsp/utils.h>
 
 #include "oscil.h"
 
-#define ftable_BUF_SZ 8194
+#define WT_BUF_SZ 8194
 #define INTERP_FRAME_SZ 256
 #define AMPS_SZ 64
 
-/**
- * @brief fail fast on bad malloc.
- */
-// static void check_malloc(void* p, const char* loc) {
-//     if (p == NULL) {
-//         fprintf(stderr, "malloc failed: %s\n", loc);
-//         exit(EXIT_FAILURE);
-//     }
-// }
-
-// interpolated wavtabs for the deck.
-ftable* wavtabs[INTERP_FRAME_SZ] = {0};
-static void wavtabs_destroy(void) {
-    for (int i = 0; i < INTERP_FRAME_SZ; i++)
-        free(wavtabs[i]);
+// TODO: add to dsp lib
+static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+    wt[wt_len] = wt[0];
+    wt[wt_len + 1] = wt[1];
 }
 
-// the main deck
-static ft_deck deck;
+// TODO: move to common.h
+static inline void* xcalloc(size_t nmemb, size_t size) {
+    void* bytes;
+    if (!(bytes = calloc(nmemb, size))) {
+        int err = errno;
+        fprintf(stderr, "Fatal. Calloc failed to alloc %zu bytes. %s\n", size,
+                strerror(err));
+        exit(EXIT_FAILURE);
+    }
+    return bytes;
+}
 
-// TODO: clean this up
-// break out logic into smaller pieces
+// TODO: move to common.h
+static inline void safe_free(void* data) {
+    free(data);
+    data = NULL;
+}
+
+typedef enum {
+    SINE = 0,
+    BUZZ,
+    SQR,
+    SAW,
+    TRI,
+} waveform;
+
+float* wavetable_create(uint32_t wt_len, waveform wf, uint32_t amps_sz) {
+    dsp_assert(is_pow2(wt_len), "wt_len_sz must be pow2.\n");
+
+    float* wt = (float*) xcalloc(wt_len + 2, sizeof(float));
+    float* amps = (float*) xcalloc(amps_sz, sizeof(float));
+
+    switch (wf) {
+        case SINE:
+            sine_amps(amps, amps_sz);
+            break;
+        case BUZZ:
+            buzz_amps(amps, amps_sz);
+            break;
+        case SQR:
+            sqr_amps(amps, amps_sz);
+            break;
+        case SAW:
+            saw_amps(amps, amps_sz);
+            break;
+        case TRI:
+            tri_amps(amps, amps_sz);
+            break;
+        default:
+            fprintf(stderr, "wavetable_create: unreachable.\n");
+            abort();
+    }
+
+    sinesum(wt, wt_len, amps, amps_sz, 0.0, true);
+    safe_free(amps);
+
+    // guardpoint
+    wavetable_cubic_guardpoint(wt, wt_len);
+
+    return wt;
+}
+
+typedef struct {
+    matrix* frames;
+} morph_deck;
+
+static morph_deck deck;
+
+static void deck_init(void) {
+
+    // we need to interpolate out INTERP_FRAME_SZ
+    // tables based on a set of three generated tables via sinesum
+    const uint32_t wt_len = WT_BUF_SZ - 2;
+    const uint32_t buf_sz = WT_BUF_SZ;
+    const uint32_t amps_sz = AMPS_SZ;
+    const uint32_t interp_frame_sz = INTERP_FRAME_SZ;
+
+    // create the 3 wavetables to blend for the exercise ..
+    float* tri = wavetable_create(wt_len, TRI, amps_sz);
+    float* saw = wavetable_create(wt_len, SAW, amps_sz);
+    float* sqr = wavetable_create(wt_len, SQR, amps_sz);
+
+    // matrix buffers
+    matrix a, b, c;
+    matrix* d = xcalloc(1, sizeof(matrix));  // returning ..
+    float* a_buf = xcalloc(3 * buf_sz, sizeof(float));
+    float* b_buf = xcalloc(3 * buf_sz, sizeof(float));
+    float* c_buf = xcalloc(interp_frame_sz * buf_sz, sizeof(float));
+    float* d_buf = xcalloc(interp_frame_sz * buf_sz, sizeof(float));
+
+    matrix_init(&a, a_buf, 3, buf_sz);                // a (original)
+    matrix_init(&b, b_buf, buf_sz, 3);                // a.T
+    matrix_init(&c, c_buf, buf_sz, interp_frame_sz);  // c (interpolated transpose of a)
+    matrix_init(d, d_buf, interp_frame_sz, buf_sz);   // c.T  <-- target
+
+    matrix_set_row(&a, 0, tri, buf_sz);
+    matrix_set_row(&a, 1, saw, buf_sz);
+    matrix_set_row(&a, 2, sqr, buf_sz);
+
+    matrix_transpose(&b, &a);
+
+    // use table_lerp to interpolate the intermediate tables
+    // this will help smooth the morphing quality
+    for (size_t row = 0; row < c.n_rows; row++) {
+        float* in_row_ptr = matrix_get_row(&b, row);
+        float* out_row_ptr = matrix_get_row(&c, row);
+        table_lerp(out_row_ptr, c.n_cols, in_row_ptr, b.n_cols);
+    }
+
+    matrix_transpose(d, &c);
+
+    safe_free(a_buf);
+    safe_free(b_buf);
+    safe_free(c_buf);
+
+    deck.frames = d;
+}
+
+static void deck_deinit(void) {
+    safe_free(deck.frames);
+}
+
 int smorph_deck_init(CSOUND* csound) {
-
-    float sr = (float) csoundGetSr(csound);
-    uint32_t amps_sz = AMPS_SZ;
-
-    float amps_saw[AMPS_SZ] = {0};
-    float amps_sqr[AMPS_SZ] = {0};
-    float amps_tri[AMPS_SZ] = {0};
-
-    // fill with amps. 0=saw, 1=sqr, 2=tri
-    saw_amps(amps_saw, amps_sz);
-    sqr_amps(amps_sqr, amps_sz);
-    tri_amps(amps_tri, amps_sz);
-
-    ft_sinesum_args* args[3] = {0};
-
-    args[0] = (ft_sinesum_args*) malloc(sizeof(ft_sinesum_args));
-    args[1] = (ft_sinesum_args*) malloc(sizeof(ft_sinesum_args));
-    args[2] = (ft_sinesum_args*) malloc(sizeof(ft_sinesum_args));
-
-    ft_sinesum_args_init(args[0], amps_tri, amps_sz, 0.0, true, amps_sz);
-    ft_sinesum_args_init(args[1], amps_saw, amps_sz, 0.0, true, amps_sz);
-    ft_sinesum_args_init(args[2], amps_sqr, amps_sz, 0.0, true, amps_sz);
-
-    // create the initial ftable deck
-    ftable* initial_wavtabs[3] = {0};
-    for (int i = 0; i < 3; i++) {
-        ftable* wt = (ftable*) malloc(sizeof(ftable));
-        float* buf = (float*) malloc(sizeof(float) * ftable_BUF_SZ);
-        memset(buf, 0, sizeof(float) * ftable_BUF_SZ);
-        ftable_init(wt, buf, ftable_BUF_SZ);
-        initial_wavtabs[i] = wt;
-    }
-
-    // generate the initial waveforms
-    dsp_err err;
-    if ((err = sinesum_deck_generate(initial_wavtabs, args, 3, sr)) != DSP_OK) {
-        for (int i = 0; i < 3; i++) {
-            free(initial_wavtabs[i]->buf);
-            free(args[i]);
-        }
-        return NOTOK;
-    }
-
-    // we initialize this deck so we can use the matrix fill method
-    ft_deck initial_deck;
-    ft_deck_init(&initial_deck, initial_wavtabs, 3);
-
-    // we need alot of memory to facilitate the ftable interp dance.
-
-    // m - original matrix from wavtabs shape=(3, ftable_BUF_SZ)
-    matrix m;
-    float* m_data = (float*) malloc(sizeof(float) * 3 * ftable_BUF_SZ);
-    memset(m_data, 0, sizeof(float) * 3 * ftable_BUF_SZ);
-    matrix_init(&m, m_data, 3, ftable_BUF_SZ);
-
-    // fill the matrix from the existing deck
-    ft_deck_matrix_fill(&initial_deck, &m);
-
-    // t - transpose matrix  shape=(ftable_BUF_SZ, 3)
-    matrix t;
-    float* t_data = (float*) malloc(sizeof(float) * 3 * ftable_BUF_SZ);
-    memset(t_data, 0, sizeof(float) * 3 * ftable_BUF_SZ);
-    matrix_init(&t, t_data, ftable_BUF_SZ, 3);
-
-    // initial transpose
-    matrix_transpose(&t, &m);
-
-    // tx - extended transpose matrix shape=(ftable_BUF_SZ, INTERP_FRAME_SZ)
-    matrix tx;
-    float* tx_data = (float*) malloc(sizeof(float) * ftable_BUF_SZ * INTERP_FRAME_SZ);
-    memset(tx_data, 0, sizeof(float) * ftable_BUF_SZ * INTERP_FRAME_SZ);
-    matrix_init(&tx, tx_data, ftable_BUF_SZ, INTERP_FRAME_SZ);
-
-    // iter over each row of the transpose and project cols from in to out
-    for (size_t row = 0; row < tx.n_rows; row++) {
-        float* in_row_ptr = matrix_get_row(&t, row);
-        float* out_row_ptr = matrix_get_row(&tx, row);
-        npinterp(out_row_ptr, tx.n_cols, in_row_ptr, t.n_cols);
-    }
-
-    // u - final matrix shape=(INTERP_FRAME_SZ, ftable_BUF_SZ)
-    matrix u;
-    float* u_data = (float*) malloc(sizeof(float) * INTERP_FRAME_SZ * ftable_BUF_SZ);
-    memset(u_data, 0, sizeof(float) * ftable_BUF_SZ * INTERP_FRAME_SZ);
-    matrix_init(&u, u_data, INTERP_FRAME_SZ, ftable_BUF_SZ);
-
-    // final transpose back to the original
-    matrix_transpose(&u, &tx);
-
-    // new wavtabs - these are the bois that go to xoscil
-    for (int i = 0; i < INTERP_FRAME_SZ; i++) {
-        ftable* wt = (ftable*) malloc(sizeof(ftable));
-        float* buf = (float*) malloc(sizeof(float) * ftable_BUF_SZ);
-        memset(buf, 0, sizeof(float) * ftable_BUF_SZ);
-
-        ftable_init(wt, buf, ftable_BUF_SZ);
-        float* row_ptr = matrix_get_row(&u, i);
-        ftable_write(wt, row_ptr, ftable_BUF_SZ, 0);
-        wavtabs[i] = wt;
-    }
-
-    // set this on the static deck .. this is what is going into
-    // xoscil instances at runtime.
-    ft_deck_init(&deck, wavtabs, INTERP_FRAME_SZ);
-
-    // free initial memory
-    free(u_data);
-    free(tx_data);
-    free(t_data);
-    free(m_data);
-    for (int i = 0; i < 3; i++) {
-        free(initial_wavtabs[i]->buf);
-        free(args[i]);
-    }
-
+    (void) csound;
+    deck_init();
     return OK;
 }
+
 int smorph_deck_destroy(CSOUND* csound) {
     (void) csound;
-    wavtabs_destroy();
+    deck_deinit();
     return OK;
 }
 
@@ -165,19 +160,13 @@ int smorph_init(CSOUND* csound, smorph* obj) {
 
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
 
-    dsp_err err;
-    if ((err = oscil_init(&obj->left, deck.frames[0], 440.0, phase, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init:left %d\n", err);
-    }
+    // TODO: move this bare init to xoscil in dsp
+    oscil_init(&obj->left, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
+               phase, sr);
+    oscil_init(&obj->right, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
+               phase, sr);
 
-    if ((err = oscil_init(&obj->right, deck.frames[0], 440.0, phase, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init:right %d\n", err);
-    }
-
-    if ((err = xoscil_init(&obj->xosc, &deck, &obj->left, &obj->right, 440.0, 0.0,
-                           phase)) != DSP_OK) {
-        return csound->InitError(csound, "blxoscil_init: %d\n", err);
-    }
+    xoscil_init(&obj->xosc, deck.frames, &obj->left, &obj->right, 440.0f, 0.0, phase);
 
     return OK;
 }

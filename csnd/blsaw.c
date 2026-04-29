@@ -1,117 +1,102 @@
+#include <errno.h>
+
 #include <csound.h>
-#include <dsp/ftable/deck.h>
-#include <dsp/ftable/sinesum.h>
+// #include <dsp/ftable/deck.h>
+// #include <dsp/ftable/sinesum.h>
+#include <dsp/sinesum.h>
 #include <dsp/utils.h>
 
 #include "csdl.h"
 #include "dsp/oscil.h"
 #include "oscil.h"
 
-// memory for 7 bands;
-//
-//
-#define N_FRAMES 7
-#define ft_BUF_SZ 8194
+#define WT_BUF_SZ 8194
+#define NHARMS_SZ 7
+#define AMPS_SZ 64
 
-static const uint32_t bands[N_FRAMES] = {64, 32, 16, 8, 4, 2, 1};
-
-static ft_sinesum_args* args[N_FRAMES] = {0};
-static void sinesum_args_destroy(void) {
-    for (int i = 0; i < N_FRAMES; i++)
-        free(args[i]);
-}
-
-static ftable* wavtabs[N_FRAMES] = {0};
-static void wavtabs_destroy(void) {
-    for (int i = 0; i < N_FRAMES; i++)
-        free(wavtabs[i]);
-}
-
-static ft_deck deck;
-
-/**
- * @brief fail fast on bad malloc.
- */
-static void check_malloc(void* p, const char* loc) {
-    if (p == NULL) {
-        fprintf(stderr, "malloc failed: %s\n", loc);
+static inline void* xcalloc(size_t nmemb, size_t size) {
+    void* bytes;
+    if (!(bytes = calloc(nmemb, size))) {
+        int err = errno;
+        fprintf(stderr, "Fatal. Calloc failed to alloc %zu bytes. %s\n", size,
+                strerror(err));
         exit(EXIT_FAILURE);
     }
+    return bytes;
 }
 
-static dsp_err fill_sinesum_args(void) {
-    uint32_t amps_sz = 64;
-    float amps[64] = {0};
+static inline void safe_free(void* data) {
+    free(data);
+    data = NULL;
+}
 
-    saw_amps(amps, amps_sz);
+static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+    wt[wt_len] = wt[0];
+    wt[wt_len + 1] = wt[1];
+}
 
-    dsp_err err;
-    for (size_t i = 0; i < N_FRAMES; i++) {
-        ft_sinesum_args* a = (ft_sinesum_args*) malloc(sizeof(ft_sinesum_args));
-        check_malloc(a, "fill_sinesum_args");
-        err =
-            ft_sinesum_args_init(a, (const float*) &amps, amps_sz, 0.0, true, bands[i]);
+static const uint32_t nharms[NHARMS_SZ] = {AMPS_SZ, 32, 16, 8, 4, 2, 1};
 
-        if (err != DSP_OK) {
-            return err;
-        }
+// static helper type to build the band limited deck components
+typedef struct {
+    matrix* frames;
+    float* bands;
+} band_limited_deck;
 
-        args[i] = a;
+static band_limited_deck deck;
+
+/**
+ * @brief initialize the wt deck.
+ * - allocates frames/bands
+ * - because we need the SR to calculate the fundamentals we must call in blsaw init
+ */
+static void deck_init(CSOUND* csound) {
+    float sr = csoundGetSr(csound);  // need the sr to calc the harmonics
+    float* bands = xcalloc(NHARMS_SZ, sizeof(float));
+
+    float* amps = xcalloc(AMPS_SZ, sizeof(float));
+    saw_amps(amps, AMPS_SZ);
+
+    uint32_t wt_buf_sz = WT_BUF_SZ;   // pow2 + 2
+    uint32_t wt_len = WT_BUF_SZ - 2;  // pow2
+
+    matrix* d = xcalloc(1, sizeof(matrix));  // returning ..
+    float* d_buf = xcalloc(7 * wt_buf_sz, sizeof(float));
+
+    matrix_init(d, d_buf, 7, wt_buf_sz);  // c.T  <-- target
+
+    float* row_ = xcalloc(wt_buf_sz, sizeof(float));
+    for (uint32_t i = 0; i < 7; i++) {
+        // reduce the harmonic count as we go
+        sinesum(row_, wt_len, amps, nharms[i], 0.0, true);
+        wavetable_cubic_guardpoint(row_, wt_len);
+        matrix_set_row(d, i, row_, wt_buf_sz);
+        // scale to 0.7 to prevent aliasing
+        bands[i] = max_fundamental(nharms[i], sr, 0.707);
     }
 
-    return err;
+    safe_free(amps);
+    safe_free(row_);
+
+    deck.bands = bands;
+    deck.frames = d;
 }
 
-static void alloc_wavtabs(void) {
-
-    for (size_t i = 0; i < N_FRAMES; i++) {
-        ftable* wt = (ftable*) malloc(sizeof(ftable));
-        check_malloc(wt, "fill_wavtabs:wt");
-        memset(wt, 0, sizeof(ftable));
-
-        float* buf = (float*) malloc(sizeof(float) * ft_BUF_SZ);
-        check_malloc(wt, "fill_wavtabs:buf");
-        memset(buf, 0, sizeof(float) * ft_BUF_SZ);
-
-        ftable_init(wt, buf, ft_BUF_SZ);
-        wavtabs[i] = wt;
-    }
+static void deck_deinit(void) {
+    safe_free(deck.frames->data);
+    safe_free(deck.bands);
 }
 
-static dsp_err generate_deck(float sr) {
-
-    dsp_err err;
-    if ((err = sinesum_deck_generate(wavtabs, args, N_FRAMES, (float) sr)) != DSP_OK) {
-        return err;
-    }
-    return err;
-}
-
-#include <stdio.h>
+// hooks for the csound instance .. run on engine start
 
 int blsaw_deck_init(CSOUND* csound) {
-
-    dsp_err err;
-    if ((err = fill_sinesum_args()) != DSP_OK) {
-        return csound->InitError(csound, "fill_sinesum_args failed: %d\n", err);
-    }
-    alloc_wavtabs();
-
-    int sr = csoundGetSr(csound);
-    if ((err = generate_deck((float) sr)) != DSP_OK) {
-        return csound->InitError(csound, "generate_deck failed: %d\n", err);
-    }
-
-    ft_deck_init(&deck, wavtabs, N_FRAMES);
+    deck_init(csound);
     return OK;
 }
 
 int blsaw_deck_destroy(CSOUND* csound) {
     (void) csound;
-
-    sinesum_args_destroy();
-    wavtabs_destroy();
-
+    deck_deinit();
     return OK;
 }
 
@@ -122,19 +107,14 @@ int blsaw_init(CSOUND* csound, blsaw* obj) {
 
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
 
-    dsp_err err;
-    if ((err = oscil_init(&obj->left, deck.frames[0], 440.0, phase, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init:left %d\n", err);
-    }
+    // TODO: move this bare init to blxoscil in dsp
+    oscil_init(&obj->left, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
+               phase, sr);
+    oscil_init(&obj->right, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
+               phase, sr);
 
-    if ((err = oscil_init(&obj->right, deck.frames[0], 440.0, phase, sr)) != DSP_OK) {
-        return csound->InitError(csound, "oscil_init:right %d\n", err);
-    }
-
-    if ((err = blxoscil_init(&obj->saw, &deck, &obj->left, &obj->right, 440.0,
-                             phase)) != DSP_OK) {
-        return csound->InitError(csound, "blxoscil_init: %d\n", err);
-    }
+    blxoscil_init(&obj->saw, deck.frames, &obj->left, &obj->right, deck.bands, 100.0f,
+                  phase);
 
     return OK;
 }

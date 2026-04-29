@@ -1,8 +1,15 @@
 #include "sampler.h"
 #include <math.h>
 #include <sys/types.h>
-#include "dsp/phasor.h"
-#include "dsp/tabread.h"
+
+#include <dsp/phasor.h>
+#include <dsp/tabread.h>
+
+// TODO: add to dsp lib
+static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+    wt[wt_len] = wt[0];
+    wt[wt_len + 1] = wt[1];
+}
 
 int sampler_init(CSOUND* csound, sampler* obj) {
     (void) csound;
@@ -46,14 +53,11 @@ int sampler_init(CSOUND* csound, sampler* obj) {
     csound->Message(csound, "sr: %f\n", sr);
     obj->dur = ftp->flen / sr;
 
-    // init wt with ftp
-    // NOTE: flen gives the full len - guard point
-    // wt will wrap the last 2 samples in this setup regardless so
-    // we don't have memcopy the whole sample.
-    ftable_init(&obj->wt, ftp->ftable, ftp->flen);
-
     // init the tabread
-    tabread_init(&obj->tab, &obj->wt);
+    // NOTE: we are chopping off a couple of samples for simplification in our tab
+    // reader .. internally ft_len_ will be set to ftp->flen - 2 .. since this is POC
+    //      sampler i don't think this will be an issue.
+    tabread_init(&obj->tab, ftp->ftable, ftp->flen);
 
     // init the phasor
     phasor_init(&obj->ph, 1.0, *obj->i_skip, sr);
@@ -81,7 +85,7 @@ int sampler_vector(CSOUND* csound, sampler* obj) {
         if (obj->a_speed[i] < 0.0) {  // reverse dir if negative
             ticks[i] = 1.0 - ticks[i];
         }
-        ticks[i] *= obj->tab.wt->len;
+        ticks[i] *= obj->ftp->flen;
     }
 
     // tick the tabreader

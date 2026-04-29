@@ -11,6 +11,8 @@
 #include "oscil.h"
 
 #define WT_BUF_SZ 8194
+#define NHARMS_SZ 7
+#define AMPS_SZ 64
 
 static inline void* xcalloc(size_t nmemb, size_t size) {
     void* bytes;
@@ -33,8 +35,6 @@ static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
     wt[wt_len + 1] = wt[1];
 }
 
-#define NHARMS_SZ 7
-#define AMPS_SZ 64
 static const uint32_t nharms[NHARMS_SZ] = {AMPS_SZ, 32, 16, 8, 4, 2, 1};
 
 // static helper type to build the band limited deck components

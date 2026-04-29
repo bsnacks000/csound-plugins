@@ -47,6 +47,7 @@ int ftoscil3_init(CSOUND* csound, ftoscil3* obj) {
     // set guard points
     //
     wavetable_cubic_guardpoint(buf, pow2_len);
+    obj->wt = buf;
 
     // handle phase
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
@@ -99,6 +100,7 @@ int ftoscil3_pm_init(CSOUND* csound, ftoscil3_pm* obj) {
 
     // set guard points
     wavetable_cubic_guardpoint(buf, pow2_len);
+    obj->wt = buf;
 
     MYFLT sr = GetLocalSr(&obj->h);
 
@@ -146,6 +148,7 @@ int oftoscil3_init(CSOUND* csound, oftoscil3* obj) {
 
     // set guard points
     wavetable_cubic_guardpoint(buf, pow2_len);
+    obj->wt = buf;
 
     // // handle phase
     float phase = clamp(*obj->i_phase, 0.0, 1.0);

@@ -5,11 +5,11 @@
 
 set -e
 
-wav_dir="./tests/regression/wavs"
+wav_dir="./tests/wavs"
 
 for wav in "$wav_dir"/*; do
     if [ -f "$wav" ]; then
-        echo $wav
+        echo "now playing: ${wav}"
         play $wav
     fi
 done

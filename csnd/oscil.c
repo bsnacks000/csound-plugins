@@ -7,10 +7,10 @@
 #include <stdint.h>
 
 // TODO: add to dsp lib
-static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-    wt[wt_len] = wt[0];
-    wt[wt_len + 1] = wt[1];
-}
+// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+//     wt[wt_len] = wt[0];
+//     wt[wt_len + 1] = wt[1];
+// }
 
 int ftoscil3_init(CSOUND* csound, ftoscil3* obj) {
 

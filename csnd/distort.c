@@ -10,11 +10,11 @@
 #define WT_BUF_SZ 1026
 
 // TODO: add to dsp lib
-static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-    wt[wt_len] = wt[0];
-    wt[wt_len + 1] = wt[1];
-}
-
+// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+//     wt[wt_len] = wt[0];
+//     wt[wt_len + 1] = wt[1];
+// }
+//
 /**
  * @brief - draw a line between start and stop inclusive (like numpy.linspace)
     TODO: add to dsp lib
@@ -29,6 +29,7 @@ static inline void linspace(float* buf, uint32_t buf_sz, float start, float stop
 }
 
 static float chebsaw_buf[WT_BUF_SZ] = {0};
+static float line[WT_BUF_SZ - 2] = {0};
 
 int chebsaw_tab_init(CSOUND* csound) {
     (void) csound;
@@ -37,7 +38,7 @@ int chebsaw_tab_init(CSOUND* csound) {
 
     // create bipolar linear bipolar ramp for the shaper
     // fill pow2_sz - 2 with the line
-    linspace(chebsaw_buf, wt_len, -1.0, 1.0);
+    linspace(line, wt_len, -1.0, 1.0);
 
     // ~saw wave coeffs from csound gen13 example
     float h[16] = {
@@ -46,7 +47,7 @@ int chebsaw_tab_init(CSOUND* csound) {
     };
 
     // calculate the chebyshev waveshape and set guard point for tabread
-    chebyshev_fill(chebsaw_buf, wt_len, h, 16);
+    chebyshev_fill(chebsaw_buf, line, wt_len, h, 16);
     wavetable_cubic_guardpoint(chebsaw_buf, wt_len);
 
     return OK;

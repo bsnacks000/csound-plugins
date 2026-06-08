@@ -6,11 +6,11 @@
 #include <dsp/tabread.h>
 
 // TODO: add to dsp lib
-static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-    wt[wt_len] = wt[0];
-    wt[wt_len + 1] = wt[1];
-}
-
+// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+//     wt[wt_len] = wt[0];
+//     wt[wt_len + 1] = wt[1];
+// }
+//
 int sampler_init(CSOUND* csound, sampler* obj) {
     (void) csound;
     (void) obj;

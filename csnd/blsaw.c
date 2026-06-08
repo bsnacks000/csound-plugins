@@ -14,6 +14,7 @@
 #define NHARMS_SZ 7
 #define AMPS_SZ 64
 
+// TODO: move to "common.h"
 static inline void* xcalloc(size_t nmemb, size_t size) {
     void* bytes;
     if (!(bytes = calloc(nmemb, size))) {
@@ -30,10 +31,11 @@ static inline void safe_free(void* data) {
     data = NULL;
 }
 
-static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-    wt[wt_len] = wt[0];
-    wt[wt_len + 1] = wt[1];
-}
+// NOTE: added to dsp-0.3
+// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+//     wt[wt_len] = wt[0];
+//     wt[wt_len + 1] = wt[1];
+// }
 
 static const uint32_t nharms[NHARMS_SZ] = {AMPS_SZ, 32, 16, 8, 4, 2, 1};
 
@@ -67,6 +69,10 @@ static void deck_init(CSOUND* csound) {
 
     float* row_ = xcalloc(wt_buf_sz, sizeof(float));
     for (uint32_t i = 0; i < 7; i++) {
+        // FIXME: without memset here there was a pretty bad bug..
+        // this needs to move to dsp-0.3 sinesum.
+        // other ftable funcs should also have memset guards when applicable
+        memset(row_, 0, sizeof(float) * wt_buf_sz);
         // reduce the harmonic count as we go
         sinesum(row_, wt_len, amps, nharms[i], 0.0, true);
         wavetable_cubic_guardpoint(row_, wt_len);
@@ -107,14 +113,16 @@ int blsaw_init(CSOUND* csound, blsaw* obj) {
 
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
 
-    // TODO: move this bare init to blxoscil in dsp
-    oscil_init(&obj->left, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
-               phase, sr);
-    oscil_init(&obj->right, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
-               phase, sr);
+    // NOTE: move this bare init to blxoscil in dsp
+    // oscil_init(&obj->left, matrix_get_row(deck.frames, 0), deck.frames->n_cols,
+    // 100.0f,
+    //           phase, sr);
+    // oscil_init(&obj->right, matrix_get_row(deck.frames, 0), deck.frames->n_cols,
+    // 100.0f,
+    //           phase, sr);
 
     blxoscil_init(&obj->saw, deck.frames, &obj->left, &obj->right, deck.bands, 100.0f,
-                  phase);
+                  phase, sr);
 
     return OK;
 }

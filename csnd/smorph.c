@@ -14,11 +14,11 @@
 #define AMPS_SZ 64
 
 // TODO: add to dsp lib
-static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-    wt[wt_len] = wt[0];
-    wt[wt_len + 1] = wt[1];
-}
-
+// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
+//     wt[wt_len] = wt[0];
+//     wt[wt_len + 1] = wt[1];
+// }
+//
 // TODO: move to common.h
 static inline void* xcalloc(size_t nmemb, size_t size) {
     void* bytes;
@@ -160,13 +160,8 @@ int smorph_init(CSOUND* csound, smorph* obj) {
 
     float phase = clamp(*obj->i_phase, 0.0, 1.0);
 
-    // TODO: move this bare init to xoscil in dsp
-    oscil_init(&obj->left, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
-               phase, sr);
-    oscil_init(&obj->right, matrix_get_row(deck.frames, 0), deck.frames->n_cols, 100.0f,
-               phase, sr);
-
-    xoscil_init(&obj->xosc, deck.frames, &obj->left, &obj->right, 440.0f, 0.0, phase);
+    xoscil_init(&obj->xosc, deck.frames, &obj->left, &obj->right, 440.0f, 0.0, phase,
+                sr);
 
     return OK;
 }

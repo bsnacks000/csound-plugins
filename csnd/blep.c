@@ -1,7 +1,7 @@
 #include "blep.h"
 
+#include <dsp/maths.h>
 #include <dsp/pblep.h>
-#include <dsp/shape.h>
 #include "csdl.h"
 
 int ssaw_init(CSOUND* csound, ssaw* obj) {

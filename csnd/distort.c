@@ -5,28 +5,8 @@
 #include <dsp/tabread.h>
 #include <dsp/utils.h>
 #include <stdint.h>
-#include "dsp/shape.h"
 
 #define WT_BUF_SZ 1026
-
-// TODO: add to dsp lib
-// static inline void wavetable_cubic_guardpoint(float* wt, uint32_t wt_len) {
-//     wt[wt_len] = wt[0];
-//     wt[wt_len + 1] = wt[1];
-// }
-//
-/**
- * @brief - draw a line between start and stop inclusive (like numpy.linspace)
-    TODO: add to dsp lib
- */
-static inline void linspace(float* buf, uint32_t buf_sz, float start, float stop) {
-    dsp_assert(buf_sz >= 2, "buf size must be at least 2.");
-
-    float step = (stop - start) / (float) (buf_sz - 1);
-    for (uint32_t i = 0; i < buf_sz; i++) {
-        buf[i] = start + i * step;
-    }
-}
 
 static float chebsaw_buf[WT_BUF_SZ] = {0};
 static float line[WT_BUF_SZ - 2] = {0};

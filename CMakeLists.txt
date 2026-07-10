@@ -1,8 +1,18 @@
 cmake_minimum_required(VERSION 3.26)
-
 set(PROJECT_NAME csound-plugins)
-project(csound-plugins LANGUAGES C VERSION 0.1.0)
 
+# bump project version here 
+project(csound-plugins LANGUAGES C VERSION 0.3.0)
+
+# extend semver prerelease tag .. Ex. -alpha.0 -rc.1 etc. 
+set(CSND_PLUGIN_VERSION "${PROJECT_VERSION}")
+
+# generate and add to build tree
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/src/version.h"
+    @ONLY
+)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -21,4 +31,4 @@ if (APPLE)
 endif()
 
 add_subdirectory(dsp)
-add_subdirectory(csnd)
+add_subdirectory(src)

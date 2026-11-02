@@ -1,7 +1,7 @@
 <CsoundSynthesizer>
 <CsOptions>
-    --opcode-lib=./build/csnd/libblpcsnd.so
-    --opcode-lib=./build/csnd/libblpcsnd.dylib
+    --opcode-lib=./build/src/libblpcsnd.so
+    --opcode-lib=./build/src/libblpcsnd.dylib
     -t 60
 </CsOptions>
 <CsInstruments>

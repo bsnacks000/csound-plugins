@@ -1,7 +1,7 @@
 <CsoundSynthesizer>
 <CsOptions>
-    --opcode-lib=./build/csnd/libblpcsnd.so
-    --opcode-lib=./build/csnd/libblpcsnd.dylib
+    --opcode-lib=./build/src/libblpcsnd.so
+    --opcode-lib=./build/src/libblpcsnd.dylib
     -t 60
 </CsOptions>
 <CsInstruments>
@@ -47,7 +47,7 @@ instr 2;
     afreq = line(p4, p3, p5)
     aq = line(p6, p3, p7)
 
-    aout = zdf_ladder(ain, afreq, aq)
+    aout = zdfladder(ain, afreq, aq)
     out aout
 
 endin

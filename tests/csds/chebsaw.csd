@@ -1,7 +1,7 @@
 <CsoundSynthesizer>
 <CsOptions>
-    --opcode-lib=./build/csnd/libblpcsnd.so
-    --opcode-lib=./build/csnd/libblpcsnd.dylib
+    --opcode-lib=./build/src/libblpcsnd.so
+    --opcode-lib=./build/src/libblpcsnd.dylib
     -t 60
 </CsOptions>
 <CsInstruments>
@@ -12,7 +12,7 @@ nchnls  = 1
 
 ; chebsaw - sawtooth waveshaper
 ; saw wave generated using cheby polynomial ftable module
-; touches tabread module as well ... see csnd/distort.h
+; touches tabread module as well ... see src/distort.h
 ; NOTE this is not a true saw wave .. the characteristics of this waveshape
 ; is similar to the GEN13 csound example by Pinkston which was used as a benchmark
 instr 1;

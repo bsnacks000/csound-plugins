@@ -143,3 +143,5 @@ PUBLIC int32_t csoundModuleInit(CSOUND* csound) {
     }
     return status;
 }
+
+LINKAGE
